@@ -4,7 +4,7 @@ import { onMounted } from 'vue'
 import ChatboxComp from './components/ChatboxComp.vue'
 import { useAuthStore } from './stores/auth'
 import { useMessagesStore } from './stores/message'
-import { fetchJson } from '@/utils/http'
+import axios from 'axios'
 
 const apiUrl = import.meta.env.VITE_SERVER_URL ?? ''
 const defaultLanguage = import.meta.env.VITE_CHATBOT_LANGUAGE ?? 'en'
@@ -19,21 +19,21 @@ async function initializeChatbot() {
   }
 
   try {
-    const tokenResponse = await fetchJson<{ access_token: string }>(`${apiUrl}/api/token`, {
-      method: 'POST',
-      body: JSON.stringify({
+    const { data: tokenResponse } = await axios.post<{ access_token: string }>(
+      `${apiUrl}/api/token`,
+      {
         clientId: import.meta.env.VITE_CLIENT_ID,
         clientSecret: import.meta.env.VITE_API_KEY,
         grant_type: 'client_credentials',
-      }),
-    })
+      },
+    )
 
     authStore.setAuthToken(tokenResponse.access_token)
 
-    const initialization = await fetchJson<{ checkId: string }>(
+    const { data: initialization } = await axios.post<{ checkId: string }>(
       `${apiUrl}/v1/chatbot/initialize/symptomCheck`,
+      null,
       {
-        method: 'POST',
         headers: {
           Authorization: `Bearer ${tokenResponse.access_token}`,
           language: defaultLanguage,

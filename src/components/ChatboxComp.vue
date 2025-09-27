@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import ChatboxInputComp from './ChatboxInputComp.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMessagesStore, type MessageType } from '@/stores/message'
-import { fetchJson } from '@/utils/http'
+import axios from 'axios'
 
 interface ChatbotOptionItem {
   id: string
@@ -63,7 +63,7 @@ const questionRequestParams = reactive({
   optionSearchTerm: '',
 })
 
-const isReadyForRequests = computed(() => Boolean(authToken.value && checkId.value))
+const isReadyForRequests = computed(() => Boolean(apiUrl && authToken.value && checkId.value))
 
 const requestHeaders = computed<Record<string, string>>(() => {
   const headers: Record<string, string> = {}
@@ -186,9 +186,17 @@ async function fetchStatus() {
   errorMessage.value = null
 
   try {
-    const data = await fetchJson<{ questions?: ChatbotQuestion[] }>(`${apiUrl}/v1/chatbot/status`, {
-      headers: requestHeaders.value,
-    })
+    if (!apiUrl) {
+      errorMessage.value = 'Missing API URL configuration.'
+      return
+    }
+
+    const { data } = await axios.get<{ questions?: ChatbotQuestion[] }>(
+      `${apiUrl}/v1/chatbot/status`,
+      {
+        headers: requestHeaders.value,
+      },
+    )
     const historyMessages: MessageType[] = []
 
     if (Array.isArray(data?.questions)) {
@@ -225,7 +233,12 @@ async function fetchOverview() {
   }
 
   try {
-    const data = await fetchJson<OverviewData>(`${apiUrl}/v1/chatbot/overview`, {
+    if (!apiUrl) {
+      errorMessage.value = 'Missing API URL configuration.'
+      return
+    }
+
+    const { data } = await axios.get<OverviewData>(`${apiUrl}/v1/chatbot/overview`, {
       headers: requestHeaders.value,
     })
     overviewData.value = data ?? null
@@ -268,12 +281,20 @@ async function fetchNextQuestion(params: { optionSkip?: number; optionTop?: numb
   }
 
   const query = searchParams.toString()
+  if (!apiUrl) {
+    errorMessage.value = 'Missing API URL configuration.'
+    return
+  }
+
   const endpoint = query ? `${apiUrl}/v1/chatbot/question?${query}` : `${apiUrl}/v1/chatbot/question`
 
   try {
-    const data = await fetchJson<ChatbotQuestion | { question?: ChatbotQuestion }>(endpoint, {
-      headers: requestHeaders.value,
-    })
+    const { data } = await axios.get<ChatbotQuestion | { question?: ChatbotQuestion }>(
+      endpoint,
+      {
+        headers: requestHeaders.value,
+      },
+    )
     const question: ChatbotQuestion | null =
       data && typeof data === 'object' && 'question' in data
         ? ((data as { question?: ChatbotQuestion }).question ?? null)
@@ -353,10 +374,13 @@ async function submitAnswer({
       payload.answer = freeText
     }
 
-    await fetchJson(`${apiUrl}/v1/chatbot/answer`, {
-      method: 'POST',
+    if (!apiUrl) {
+      errorMessage.value = 'Missing API URL configuration.'
+      return
+    }
+
+    await axios.post(`${apiUrl}/v1/chatbot/answer`, payload, {
       headers: requestHeaders.value,
-      body: JSON.stringify(payload),
     })
 
     await fetchNextQuestion({ optionSkip: 0, optionTop: questionRequestParams.optionTop, optionSearchTerm: '' })
@@ -409,8 +433,12 @@ async function handleOverviewConfirm() {
   errorMessage.value = null
 
   try {
-    await fetchJson(`${apiUrl}/v1/chatbot/overview/confirm`, {
-      method: 'POST',
+    if (!apiUrl) {
+      errorMessage.value = 'Missing API URL configuration.'
+      return
+    }
+
+    await axios.post(`${apiUrl}/v1/chatbot/overview/confirm`, null, {
       headers: requestHeaders.value,
     })
 
@@ -430,11 +458,18 @@ async function handleAddSuggestedSymptom(symptomId: string) {
   errorMessage.value = null
 
   try {
-    await fetchJson(`${apiUrl}/v1/chatbot/overview/symptoms`, {
-      method: 'POST',
-      headers: requestHeaders.value,
-      body: JSON.stringify({ symptomIds: [symptomId] }),
-    })
+    if (!apiUrl) {
+      errorMessage.value = 'Missing API URL configuration.'
+      return
+    }
+
+    await axios.post(
+      `${apiUrl}/v1/chatbot/overview/symptoms`,
+      { symptomIds: [symptomId] },
+      {
+        headers: requestHeaders.value,
+      },
+    )
 
     await fetchOverview()
   } catch (error) {
@@ -443,6 +478,30 @@ async function handleAddSuggestedSymptom(symptomId: string) {
 }
 
 function normalizeError(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const responseData = error.response?.data
+
+    if (typeof responseData === 'string') {
+      return responseData
+    }
+
+    if (responseData && typeof responseData === 'object' && 'message' in responseData) {
+      const maybeMessage = (responseData as { message?: unknown }).message
+
+      if (typeof maybeMessage === 'string') {
+        return maybeMessage
+      }
+    }
+
+    if (error.response?.status) {
+      return `Request failed with status ${error.response.status}`
+    }
+
+    if (error.message) {
+      return error.message
+    }
+  }
+
   if (error instanceof Error) {
     return error.message
   }
