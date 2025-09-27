@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+const props = defineProps<{
+  disabled?: boolean
+  placeholder?: string
+}>()
+
 const emit = defineEmits<{
   (e: 'send', message: string): void
 }>()
 
 const draftMessage = ref('')
 
-const isSendDisabled = computed(() => draftMessage.value.trim().length === 0)
+const isSendDisabled = computed(() => props.disabled || draftMessage.value.trim().length === 0)
 
 function submit() {
   const trimmed = draftMessage.value.trim()
@@ -26,7 +31,8 @@ function submit() {
       id="chat-input"
       v-model="draftMessage"
       rows="2"
-      placeholder="Type your message..."
+      :placeholder="props.placeholder ?? 'Type your message...'"
+      :disabled="props.disabled"
       class="w-full flex-1 resize-none rounded-xl border border-slate-200 p-3 text-base text-slate-700 shadow-sm focus:border-[#6fa2e6] focus:outline-none focus:ring-2 focus:ring-[#6fa2e6]"
     ></textarea>
     <button
