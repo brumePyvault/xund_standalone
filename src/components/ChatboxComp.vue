@@ -402,7 +402,8 @@ async function fetchSymptomCheckReport() {
     })
 
     revokeSymptomCheckReportPdfUrl()
-    const pdfBlob = pdfResponse.data instanceof Blob ? pdfResponse.data : new Blob([pdfResponse.data])
+    const pdfBlob =
+      pdfResponse.data instanceof Blob ? pdfResponse.data : new Blob([pdfResponse.data])
     symptomCheckReportPdfUrl.value = URL.createObjectURL(pdfBlob)
   } catch (error) {
     clearSymptomCheckReport()
@@ -632,10 +633,10 @@ function normalizeError(error: unknown) {
         </div>
       </template>
 
-    <div
-      v-if="currentQuestion?.detailedType === 'OVERVIEW' && overviewData"
-      class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-    >
+      <div
+        v-if="currentQuestion?.detailedType === 'OVERVIEW' && overviewData"
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
         <h2 class="text-base font-semibold text-slate-800">Review your symptoms</h2>
         <div class="mt-3 grid gap-4 md:grid-cols-2">
           <div>
@@ -701,6 +702,10 @@ function normalizeError(error: unknown) {
             type="button"
             class="font-semibold text-[#3060a6] hover:underline"
             @click="handleLoadMoreOptions"
+            v-if="
+              currentQuestion?.options?.count &&
+              currentQuestion.options.values.length < currentQuestion.options.count
+            "
           >
             Load more
           </button>
