@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import ChatboxInputComp from './ChatboxInputComp.vue'
@@ -26,8 +26,17 @@ interface ChatbotQuestion {
   options?: {
     count: number
     items?: ChatbotOptionItem[]
+    values?: ChatbotOptionItem[]
   }
   detailedTypeData?: Record<string, unknown>
+}
+
+interface SymptomCheckReportMetadata {
+  apiVersion?: string
+}
+
+interface SymptomCheckReport {
+  metadata?: SymptomCheckReportMetadata
 }
 
 interface OverviewSymptom {
@@ -54,11 +63,14 @@ const isSendingAnswer = ref(false)
 const errorMessage = ref<string | null>(null)
 const currentQuestion = ref<ChatbotQuestion | null>(null)
 const overviewData = ref<OverviewData | null>(null)
+const symptomCheckReport = ref<SymptomCheckReport | null>(null)
+const symptomCheckReportPdfUrl = ref<string | null>(null)
 const hasLoadedInitialStatus = ref(false)
 const scrollContainer = ref<HTMLElement | null>(null)
+const isFetchingReport = ref(false)
 
 const questionRequestParams = reactive({
-  optionTop: 12,
+  optionTop: 34,
   optionSkip: 0,
   optionSearchTerm: '',
 })
@@ -142,6 +154,10 @@ onMounted(() => {
   }
 })
 
+onBeforeUnmount(() => {
+  revokeSymptomCheckReportPdfUrl()
+})
+
 async function initializeConversation() {
   if (!isReadyForRequests.value) {
     return
@@ -218,16 +234,43 @@ async function fetchStatus() {
     }
 
     messageStore.resetMessages(historyMessages)
-
-    if (currentQuestion.value?.detailedType === 'OVERVIEW') {
-      await fetchOverview()
-    } else {
-      overviewData.value = null
-    }
+    await handleQuestionSideEffects(currentQuestion.value)
   } catch (error) {
     errorMessage.value = normalizeError(error)
   } finally {
     isLoading.value = false
+  }
+}
+
+function revokeSymptomCheckReportPdfUrl() {
+  if (symptomCheckReportPdfUrl.value) {
+    URL.revokeObjectURL(symptomCheckReportPdfUrl.value)
+    symptomCheckReportPdfUrl.value = null
+  }
+}
+
+function clearSymptomCheckReport() {
+  symptomCheckReport.value = null
+  revokeSymptomCheckReportPdfUrl()
+}
+
+async function handleQuestionSideEffects(question: ChatbotQuestion | null) {
+  if (!question) {
+    overviewData.value = null
+    clearSymptomCheckReport()
+    return
+  }
+
+  if (question.detailedType === 'OVERVIEW') {
+    await fetchOverview()
+  } else {
+    overviewData.value = null
+  }
+
+  if (question.detailedType === 'SYMPTOM_CHECK_REPORT' && question.type === 'FUNCTION') {
+    await fetchSymptomCheckReport()
+  } else {
+    clearSymptomCheckReport()
   }
 }
 
@@ -322,16 +365,50 @@ async function fetchNextQuestion(
     }
 
     currentQuestion.value = question
-    overviewData.value = null
+    await handleQuestionSideEffects(question)
     upsertBotMessage(question)
 
-    if (question.detailedType === 'OVERVIEW') {
-      await fetchOverview()
+    if (question.type === 'INFO') {
+      await submitAnswer({ displayText: '', skip: true })
     }
   } catch (error) {
     errorMessage.value = normalizeError(error)
   } finally {
     isLoading.value = false
+  }
+}
+
+async function fetchSymptomCheckReport() {
+  if (!isReadyForRequests.value) {
+    return
+  }
+
+  if (!apiUrl) {
+    errorMessage.value = 'Missing API URL configuration.'
+    return
+  }
+
+  isFetchingReport.value = true
+
+  try {
+    const { data } = await axios.get<SymptomCheckReport>(`${apiUrl}/v1/chatbot/report`, {
+      headers: requestHeaders.value,
+    })
+    symptomCheckReport.value = data ?? null
+
+    const pdfResponse = await axios.get<Blob>(`${apiUrl}/v1/chatbot/report/pdf`, {
+      headers: requestHeaders.value,
+      responseType: 'blob',
+    })
+
+    revokeSymptomCheckReportPdfUrl()
+    const pdfBlob = pdfResponse.data instanceof Blob ? pdfResponse.data : new Blob([pdfResponse.data])
+    symptomCheckReportPdfUrl.value = URL.createObjectURL(pdfBlob)
+  } catch (error) {
+    clearSymptomCheckReport()
+    errorMessage.value = normalizeError(error)
+  } finally {
+    isFetchingReport.value = false
   }
 }
 
@@ -368,7 +445,6 @@ async function submitAnswer({
     }
 
     if (skip) {
-      payload.skip = true
     }
 
     if (optionId) {
@@ -540,7 +616,11 @@ function normalizeError(error: unknown) {
       </div>
 
       <template v-for="message in messages" :key="message.id">
-        <div class="flex" :class="message.sender === 'user' ? 'justify-end' : 'justify-start'">
+        <div
+          class="flex"
+          v-if="message?.text"
+          :class="message.sender === 'user' ? 'justify-end' : 'justify-start'"
+        >
           <div
             class="max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm"
             :class="
@@ -552,10 +632,10 @@ function normalizeError(error: unknown) {
         </div>
       </template>
 
-      <div
-        v-if="currentQuestion?.detailedType === 'OVERVIEW' && overviewData"
-        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-      >
+    <div
+      v-if="currentQuestion?.detailedType === 'OVERVIEW' && overviewData"
+      class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+    >
         <h2 class="text-base font-semibold text-slate-800">Review your symptoms</h2>
         <div class="mt-3 grid gap-4 md:grid-cols-2">
           <div>
@@ -631,6 +711,14 @@ function normalizeError(error: unknown) {
           >
             Reset search
           </button>
+          <button
+            v-if="currentQuestion?.isSkippable"
+            type="button"
+            @click="submitAnswer({ displayText: '', skip: true })"
+            class="font-semibold text-[#3060a6] hover:underline"
+          >
+            skip
+          </button>
         </div>
       </div>
       <div
@@ -638,6 +726,36 @@ function normalizeError(error: unknown) {
         class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
       >
         No matching options found. Try refining your search or browse the suggestions above.
+      </div>
+      <div
+        v-if="currentQuestion?.detailedType === 'SYMPTOM_CHECK_REPORT'"
+        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <h2 class="text-base font-semibold text-slate-800">Symptom check report</h2>
+        <p class="mt-1 text-sm text-slate-600">
+          API version:
+          <span class="font-semibold text-slate-800">
+            {{ symptomCheckReport?.metadata?.apiVersion ?? 'Unknown' }}
+          </span>
+        </p>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <a
+            v-if="symptomCheckReportPdfUrl"
+            :href="symptomCheckReportPdfUrl"
+            download="symptom-check-report.pdf"
+            class="inline-flex items-center justify-center rounded-lg bg-[#6fa2e6] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#5a8ccc]"
+          >
+            Download PDF
+          </a>
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-lg border border-[#6fa2e6] px-4 py-2 text-sm font-semibold text-[#3060a6] transition hover:bg-[#6fa2e61a] disabled:cursor-not-allowed disabled:opacity-70"
+            :disabled="isFetchingReport"
+            @click="fetchSymptomCheckReport"
+          >
+            {{ isFetchingReport ? 'Refreshing…' : 'Refresh report' }}
+          </button>
+        </div>
       </div>
     </div>
 
