@@ -58,7 +58,7 @@ const hasLoadedInitialStatus = ref(false)
 const scrollContainer = ref<HTMLElement | null>(null)
 
 const questionRequestParams = reactive({
-  optionTop: 12,
+  optionTop: 34,
   optionSkip: 0,
   optionSearchTerm: '',
 })
@@ -325,6 +325,9 @@ async function fetchNextQuestion(
     overviewData.value = null
     upsertBotMessage(question)
 
+    if (question.type === 'INFO') {
+      await submitAnswer({ displayText: '', skip: true })
+    }
     if (question.detailedType === 'OVERVIEW') {
       await fetchOverview()
     }
@@ -368,7 +371,6 @@ async function submitAnswer({
     }
 
     if (skip) {
-      payload.skip = true
     }
 
     if (optionId) {
