@@ -542,7 +542,11 @@ function normalizeError(error: unknown) {
       </div>
 
       <template v-for="message in messages" :key="message.id">
-        <div class="flex" :class="message.sender === 'user' ? 'justify-end' : 'justify-start'">
+        <div
+          class="flex"
+          v-if="message?.text"
+          :class="message.sender === 'user' ? 'justify-end' : 'justify-start'"
+        >
           <div
             class="max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm"
             :class="
@@ -632,6 +636,14 @@ function normalizeError(error: unknown) {
             @click="handleResetSearch"
           >
             Reset search
+          </button>
+          <button
+            v-if="currentQuestion?.isSkippable"
+            type="button"
+            @click="submitAnswer({ displayText: '', skip: true })"
+            class="font-semibold text-[#3060a6] hover:underline"
+          >
+            skip
           </button>
         </div>
       </div>
