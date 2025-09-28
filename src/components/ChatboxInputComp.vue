@@ -19,13 +19,18 @@ function submit() {
   if (!trimmed) {
     return
   }
+  draftMessage.value = ''
 
   emit('send', trimmed)
   draftMessage.value = ''
 }
 </script>
 <template>
-  <form @submit.prevent="submit" class="flex items-end gap-3 bg-white p-4">
+  <form
+    @submit.prevent="submit"
+    @keyup.enter.prevent="submit"
+    class="flex items-end gap-3 bg-white p-4"
+  >
     <label class="sr-only" for="chat-input">Message</label>
     <textarea
       id="chat-input"
@@ -38,7 +43,7 @@ function submit() {
     <button
       type="submit"
       :disabled="isSendDisabled"
-      class="rounded-xl bg-[#6fa2e6] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
+      class="rounded-xl bg-[#3380e6] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
     >
       Send
     </button>

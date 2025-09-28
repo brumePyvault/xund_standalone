@@ -20,7 +20,7 @@ async function initializeChatbot() {
 
   try {
     const { data: tokenResponse } = await axios.post<{ access_token: string }>(
-      `${apiUrl}/api/token`,
+      `https://corsanywhere-1tux.onrender.com/proxy?url=https://login.xund.solutions/api/token`,
       {
         clientId: import.meta.env.VITE_CLIENT_ID,
         clientSecret: import.meta.env.VITE_API_KEY,
