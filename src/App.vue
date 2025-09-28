@@ -54,8 +54,8 @@ onMounted(async () => {
 
 <template>
   <section class="bg-[#69c3e633] h-dvh w-dvw overflow-hidden">
-    <div class="mx-auto w-fit h-full py-20">
-      <section class="mx-auto w-fit h-[90%]">
+    <div class="mx-auto w-fit h-full max-w-full py-20 px-2.5">
+      <section class="mx-auto w-fit max-w-full h-[90%]">
         <ChatboxComp />
       </section>
     </div>
